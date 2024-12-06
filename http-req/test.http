@@ -1,0 +1,19 @@
+@url = http://localhost:5000
+
+# @name recommendations
+POST {{url}}/recommendations
+Content-type: application/json
+
+{
+  "user_input": {
+    "Genre": "Action",
+    "Actor": "Keanu Reeves",
+    "Release Year": "2021"
+  },
+  "movies": [
+    {"title": "John Wick 4", "release_date": "2023-03-24", "vote_average": 8.1}
+  ]
+}
+
+
+###
