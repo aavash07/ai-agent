@@ -3,6 +3,7 @@ import requests
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+import re
 
 # Load environment variables
 load_dotenv()
@@ -81,13 +82,14 @@ class MovieRecommendationAgent:
 
     def generate_ai_recommendations(self, movie_list):
         """
-        Generate recommendations using Azure OpenAI GPT.
+        Generate multiple recommendations using Azure OpenAI GPT.
+        Extracts recommended movies from the AI response and matches them with TMDB data.
         """
         movie_titles = [movie["title"] for movie in movie_list]
         prompt = f"""
         Based on the user's input: {self.user_input},
         and the following movies: {movie_titles},
-        suggest other similar movies and explain why they might be a good fit.
+        suggest multiple movies (at least 3) that are similar to these. Explain why they might be a good fit for the user.
         """
         try:
             response = openai.chat.completions.create(
@@ -99,10 +101,41 @@ class MovieRecommendationAgent:
             )
             choices = response.choices
             if choices and len(choices) > 0:
-                return choices[0].message.content.strip()
+                recommendation_text = choices[0].message.content.strip()
+
+                # Extract movie titles from the AI response
+                recommended_titles = self.extract_titles_from_text(recommendation_text)
+
+                # Match extracted titles with TMDB movie list
+                matched_movies = self.match_movies_with_titles(recommended_titles, movie_list)
+
+                return {
+                    "recommendation_text": recommendation_text,
+                    "recommended_movies": matched_movies
+                }
             return {"error": "No response received from the AI model."}
         except openai.OpenAIError as e:
             return {"error": str(e)}
+
+    def extract_titles_from_text(self, text):
+        """
+        Extract movie titles from the AI-generated recommendation text.
+        """
+        # Use regular expressions to find quoted movie titles
+        titles = re.findall(r'"([^"]+)"', text)
+        return titles
+
+    def match_movies_with_titles(self, titles, movie_list):
+        """
+        Match extracted movie titles with TMDB movie list to get full details.
+        """
+        matched_movies = []
+        for title in titles:
+            for movie in movie_list:
+                if movie["title"].lower() == title.lower():
+                    matched_movies.append(movie)
+                    break
+        return matched_movies
 
     def record_progress(self, action, result):
         """
@@ -131,6 +164,9 @@ class MovieRecommendationAgent:
         """
         Execute the AI agent workflow with dynamic looping.
         """
+        movie_data = []
+        recommendations = {}
+
         while not self.done:
             actions = self.plan_actions()
 
@@ -139,15 +175,22 @@ class MovieRecommendationAgent:
                 result = self.execute_action(action)
                 self.record_progress(action, result)
 
-                # Check if the action failed
+                # Handle results
+                if action["type"] == "fetch_movies":
+                    movie_data = result
+                elif action["type"] == "generate_recommendations":
+                    recommendations = result
+
+                # If any action fails, log error and stop
                 if isinstance(result, dict) and "error" in result:
                     print(f"Error during action: {result['error']}")
                     break
 
-            # Check if task is completed
+            # Check if task is complete
             self.done = all("error" not in log["result"] for log in self.progress_log)
 
         return {
-            "recommendations": self.progress_log[-1]["result"] if self.done else "Task incomplete.",
+            "recommendations": recommendations["recommendation_text"],
+            "movies": recommendations["recommended_movies"],
             "progress_log": self.progress_log,
         }
