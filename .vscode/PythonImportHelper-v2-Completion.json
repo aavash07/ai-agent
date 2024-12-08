@@ -245,7 +245,7 @@
         "kind": 5,
         "importPath": "backend.app",
         "description": "backend.app",
-        "peekOfCode": "app = Flask(__name__)\nCORS(app)  # Enable CORS for frontend-backend communication\nTMDB_API_KEY = os.getenv(\"TMDB_API_KEY\")  # Ensure your TMDB_API_KEY is in .env\n@app.route('/genres', methods=['GET'])\ndef genres():\n    \"\"\"\n    API endpoint for fetching genres from TMDB.\n    \"\"\"\n    url = f\"https://api.themoviedb.org/3/genre/movie/list?api_key={TMDB_API_KEY}&language=en-US\"\n    response = requests.get(url)",
+        "peekOfCode": "app = Flask(__name__)\n# Allow CORS from all origins\nCORS(app, resources={r\"/*\": {\"origins\": \"*\"}})\nTMDB_API_KEY = os.getenv(\"TMDB_API_KEY\")  # Ensure your TMDB_API_KEY is in .env\n@app.route('/genres', methods=['GET'])\ndef genres():\n    \"\"\"\n    API endpoint for fetching genres from TMDB.\n    \"\"\"\n    url = f\"https://api.themoviedb.org/3/genre/movie/list?api_key={TMDB_API_KEY}&language=en-US\"",
         "detail": "backend.app",
         "documentation": {}
     },

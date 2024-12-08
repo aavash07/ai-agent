@@ -5,7 +5,9 @@ import requests
 import os
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend-backend communication
+
+# Allow CORS from all origins
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")  # Ensure your TMDB_API_KEY is in .env
 
