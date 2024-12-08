@@ -1,25 +1,19 @@
-import openai
 import requests
 from dotenv import load_dotenv
 import os
 from datetime import datetime
 import re
+from groq import Groq
 
 # Load environment variables
 load_dotenv()
 
 # Environment Variables
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_MODEL = os.getenv("AZURE_OPENAI_MODEL")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Set up OpenAI configuration for Azure
-openai.api_type = "azure"
-openai.api_key = AZURE_OPENAI_API_KEY
-openai.api_base = AZURE_OPENAI_ENDPOINT
-openai.api_version = AZURE_OPENAI_API_VERSION
+# Configure Groq client
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 class MovieRecommendationAgent:
@@ -82,71 +76,77 @@ class MovieRecommendationAgent:
 
     def generate_ai_recommendations(self, movie_list):
         """
-        Generate multiple recommendations using Azure OpenAI GPT.
-        Extracts recommended movies from the AI response and matches them with TMDB data.
+        Generate multiple recommendations using the Groq AI API and refetch movie details.
         """
         movie_titles = [movie["title"] for movie in movie_list]
+        genre_name = self.user_input.get("genre_name", "not specified")
+        actor_name = self.user_input.get("actor_name", "not specified")
+        release_year = self.user_input.get("release_year", "not specified")
+
         prompt = f"""
-        Based on the user's input: {self.user_input},
-        and the following movies: {movie_titles},
-        suggest multiple movies (at least 3) that are similar to these. Explain why they might be a good fit for the user.
+        Based on the user's input:
+        - Genre: {genre_name}
+        - Actor: {actor_name}
+        - Release Year: {release_year}
+
+        Please suggest three movie recommendations that align with these preferences. For each recommendation, include:
+        1. The movie title.
+        2. A short description of the movie that highlights its appeal.
+        3. Why this movie might interest the user based on their input.
+
+        Make the descriptions engaging and conversational, avoiding overly technical language. Format the output as a numbered list.
         """
         try:
-            response = openai.chat.completions.create(
-                model=AZURE_OPENAI_MODEL,
+            chat_completion = client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": "You are a helpful movie recommendation assistant."},
                     {"role": "user", "content": prompt},
-                ]
+                ],
+                model="llama3-8b-8192",
             )
-            choices = response.choices
-            if choices and len(choices) > 0:
-                recommendation_text = choices[0].message.content.strip()
+            recommendation_text = chat_completion.choices[0].message.content.strip()
 
-                # Extract movie titles from the AI response
-                recommended_titles = self.extract_titles_from_text(recommendation_text)
+            # Extract movie titles from the AI response
+            recommended_titles = self.extract_titles_from_text(recommendation_text)
 
-                # Match extracted titles with TMDB movie list
-                matched_movies = self.match_movies_with_titles(recommended_titles, movie_list)
+            # Refetch movies for the recommended titles
+            detailed_movies = self.refetch_movies_by_titles(recommended_titles)
 
-                return {
-                    "recommendation_text": recommendation_text,
-                    "recommended_movies": matched_movies
+            return {
+                "recommendation_text": recommendation_text,
+                "recommended_movies": detailed_movies,
+            }
+        except Exception as e:
+            return {"error": f"Failed to generate recommendations: {str(e)}"}
+
+    def refetch_movies_by_titles(self, titles):
+        """
+        Refetch detailed movie data from TMDB for the given titles.
+        """
+        fetched_movies = []
+        for title in titles:
+            try:
+                search_url = f"https://api.themoviedb.org/3/search/movie"
+                search_params = {
+                    "api_key": TMDB_API_KEY,
+                    "query": title,
+                    "language": "en-US",
                 }
-            return {"error": "No response received from the AI model."}
-        except openai.OpenAIError as e:
-            return {"error": str(e)}
+                response = requests.get(search_url, params=search_params)
+                response.raise_for_status()
+                results = response.json().get("results", [])
+                if results:
+                    fetched_movies.append(results[0])
+            except requests.RequestException as e:
+                print(f"Failed to refetch movie for title '{title}': {str(e)}")
+        return fetched_movies
 
     def extract_titles_from_text(self, text):
         """
         Extract movie titles from the AI-generated recommendation text.
         """
-        # Use regular expressions to find quoted movie titles
-        titles = re.findall(r'"([^"]+)"', text)
+        titles = re.findall(r"\*\*(.*?)\*\*", text)
         return titles
-
-    def match_movies_with_titles(self, titles, movie_list):
-        """
-        Match extracted movie titles with TMDB movie list to get full details.
-        """
-        matched_movies = []
-        for title in titles:
-            for movie in movie_list:
-                if movie["title"].lower() == title.lower():
-                    matched_movies.append(movie)
-                    break
-        return matched_movies
-
-    def record_progress(self, action, result):
-        """
-        Record the progress in a log.
-        """
-        log_entry = {
-            "timestamp": datetime.now(),
-            "action": action,
-            "result": result,
-        }
-        self.progress_log.append(log_entry)
 
     def execute_action(self, action):
         """
@@ -173,24 +173,21 @@ class MovieRecommendationAgent:
             for action in actions:
                 print(f"Executing action: {action['description']}")
                 result = self.execute_action(action)
-                self.record_progress(action, result)
+                self.progress_log.append({"action": action, "result": result})
 
-                # Handle results
                 if action["type"] == "fetch_movies":
                     movie_data = result
                 elif action["type"] == "generate_recommendations":
                     recommendations = result
 
-                # If any action fails, log error and stop
                 if isinstance(result, dict) and "error" in result:
                     print(f"Error during action: {result['error']}")
                     break
 
-            # Check if task is complete
             self.done = all("error" not in log["result"] for log in self.progress_log)
 
         return {
-            "recommendations": recommendations["recommendation_text"],
-            "movies": recommendations["recommended_movies"],
+            "recommendations": recommendations.get("recommendation_text", ""),
+            "movies": recommendations.get("recommended_movies", []),
             "progress_log": self.progress_log,
         }
