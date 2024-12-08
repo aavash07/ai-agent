@@ -62,3 +62,37 @@ h2 {
   font-size: 14px;
   margin: 10px;
 }
+
+
+
+@keyframes bounce {
+  0%, 20%, 50%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-5px);
+  }
+  60% {
+    transform: translateY(-5px);
+  }
+}
+
+.chat-button:hover {
+  transform: scale(1.05); /* Slight hover effect */
+  transition: transform 0.3s ease-in-out;
+}
+
+
+/* Subtle Bounce Animation for Chat Icon */
+.bouncy-chat-icon {
+  animation: subtle-bounce 2s infinite;
+}
+
+@keyframes subtle-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px); /* Small upward movement */
+  }
+}

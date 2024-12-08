@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-// import MovieList from ".components/MovieList";
 import MovieList from "./components/MovieList";
+import ChatDialog from "./components/ChatDialog";
 import {
   MenuItem,
   Select,
@@ -10,6 +10,9 @@ import {
   Button,
   CircularProgress,
 } from "@mui/material";
+import { FaComments } from "react-icons/fa";
+import ReactMarkdown from "react-markdown";
+import "./App.css";
 
 function App() {
   const [genres, setGenres] = useState([]);
@@ -20,6 +23,15 @@ function App() {
   const [typedRecommendations, setTypedRecommendations] = useState("");
   const [movies, setMovies] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+
+  // List of emojis
+  const emojiList = ["🎬", "🍿", "🎥", "📽️", "🎞️", "⭐", "🥳", "🎤", "👓"];
+
+  // Get a random emoji
+  const getRandomEmoji = () => {
+    return emojiList[Math.floor(Math.random() * emojiList.length)];
+  };
 
   useEffect(() => {
     async function fetchGenres() {
@@ -59,6 +71,26 @@ function App() {
     }
   };
 
+  const handleChatMessage = async (query) => {
+    setLoading(true);
+    try {
+      const response = await fetch("http://127.0.0.1:5000/recommend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      const data = await response.json();
+      setRecommendations(data.recommendations || "No recommendations found.");
+      setMovies(data.movies || []);
+      return data.recommendations || "No recommendations found.";
+    } catch (error) {
+      console.error("Error processing chat query:", error);
+      return "Sorry, something went wrong. Please try again.";
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const applyTypewriterEffect = (text) => {
     let index = 0;
     const interval = setInterval(() => {
@@ -71,36 +103,10 @@ function App() {
     }, 5);
   };
 
-  const fakeMovies = [
-    {
-      title: "Fake Movie 1",
-      poster_path: "https://via.placeholder.com/150x200?text=Fake+Movie+1",
-    },
-    {
-      title: "Fake Movie 2",
-      poster_path: "https://via.placeholder.com/150x200?text=Fake+Movie+2",
-    },
-    {
-      title: "Fake Movie 3",
-      poster_path: "https://via.placeholder.com/150x200?text=Fake+Movie+3",
-    },
-  ];
-
-  useEffect(() => {
-    const carousel = document.getElementById("fakeMoviesCarousel");
-    const interval = setInterval(() => {
-      if (carousel) {
-        carousel.scrollBy({ left: 200, behavior: "smooth" });
-        if (
-          carousel.scrollLeft + carousel.clientWidth >=
-          carousel.scrollWidth
-        ) {
-          carousel.scrollTo({ left: 0, behavior: "smooth" });
-        }
-      }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+  const sanitizedRecommendations = typedRecommendations.replace(
+    /\n{2,}/g,
+    "\n"
+  );
 
   return (
     <div
@@ -141,7 +147,7 @@ function App() {
         <div style={{ flex: 1, marginRight: "20px" }}>
           <form onSubmit={handleSubmit}>
             <FormControl fullWidth style={{ marginBottom: "20px" }}>
-              <InputLabel style={{ color: "red" }}>Genre</InputLabel>
+              <InputLabel style={{ color: "black" }}>Genre</InputLabel>
               <Select
                 value={genre}
                 onChange={(e) => setGenre(e.target.value)}
@@ -183,7 +189,14 @@ function App() {
               InputProps={{ style: { color: "black" } }}
             />
 
-            <div style={{ textAlign: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
               <Button
                 variant="contained"
                 type="submit"
@@ -192,15 +205,41 @@ function App() {
                     "linear-gradient(90deg, rgba(0,36,36,1) 0%, rgba(9,121,113,1) 35%, rgba(2,88,122,1) 100%)",
                   color: "white",
                   fontWeight: "bold",
+                  height: "50px",
+                  width: "235px",
+                  borderRadius: "5px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                Get Recommendations
+                GET RECOMMENDATIONS
               </Button>
+              <span>or</span>
+              <div
+                className="chat-button"
+                onClick={() => setChatOpen(true)}
+                style={{
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "50px",
+                  width: "50px",
+                  borderRadius: "5px",
+                  background:
+                    "linear-gradient(90deg, rgba(0,36,36,1) 0%, rgba(9,121,113,1) 35%, rgba(2,88,122,1) 100%)",
+                  color: "white",
+                  fontSize: "1.2rem",
+                }}
+              >
+                <FaComments size={20} className="bouncy-chat-icon" />
+              </div>
             </div>
           </form>
 
           <h2 style={{ marginTop: "30px" }}>Movies</h2>
-          <MovieList movies={movies.length > 0 ? movies : fakeMovies} />
+          <MovieList movies={movies.length > 0 ? movies : []} />
         </div>
 
         <div
@@ -212,20 +251,72 @@ function App() {
           }}
         >
           <h2>Recommendations</h2>
-          <div style={{
-    whiteSpace: "pre-wrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    fontSize: "0.9rem",
-    lineHeight: "1.6",
-    width: "100%",
-    maxWidth: "100%", // Ensures it doesn't exceed the container
-    minHeight:"80vh"
-  }}>
-            {typedRecommendations}
+          <div
+            style={{
+              whiteSpace: "pre-wrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              fontSize: "0.9rem",
+              lineHeight: "1.6",
+              width: "100%",
+              maxWidth: "100%",
+              minHeight: "80vh",
+            }}
+          >
+            <ReactMarkdown
+              components={{
+                strong: ({ children }) => (
+                  <strong
+                    style={{
+                      fontSize: "1.2rem",
+                      color: "white",
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    {children}
+                    <span
+                      style={{
+                        marginLeft: "5px",
+                        fontSize: "1rem",
+                      }}
+                    >
+                      {getRandomEmoji()}
+                    </span>
+                  </strong>
+                ),
+                p: ({ children }) => (
+                  <p style={{ margin: "0", color: "white" , marginBottom:"-40px"}}>{children}</p>
+                ),
+                li: ({ children }) => (
+                  <li style={{ marginBottom: "5px", color: "white" }}>
+                    {children}
+                  </li>
+                ),
+                ol: ({ children }) => (
+                  <ol
+                    style={{
+                      margin: "0",
+                      paddingInlineStart: "20px",
+                    }}
+                  >
+                    {children}
+                  </ol>
+                ),
+              }}
+            >
+              {sanitizedRecommendations}
+            </ReactMarkdown>
           </div>
         </div>
       </div>
+
+      <ChatDialog
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        onSendMessage={handleChatMessage}
+        movies={movies}
+      />
     </div>
   );
 }
