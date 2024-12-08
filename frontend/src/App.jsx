@@ -68,7 +68,7 @@ function App() {
       } else {
         clearInterval(interval);
       }
-    }, 50);
+    }, 5);
   };
 
   const fakeMovies = [
