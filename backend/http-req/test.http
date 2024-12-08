@@ -13,3 +13,14 @@ Content-type: application/json
 
 
 ###
+
+# @name user_query
+POST {{url}}/recommend
+Content-type: application/json
+
+{
+  "query": "I want to watch an action movie with Keanu Reeves released in 2021"
+}
+
+
+###

@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 import re
 from groq import Groq
+import json
 
 # Load environment variables
 load_dotenv()
@@ -17,8 +18,9 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 class MovieRecommendationAgent:
-    def __init__(self, user_input):
+    def __init__(self, user_input=None, query=None):
         self.user_input = user_input
+        self.query = query
         self.progress_log = []
         self.done = False
 
@@ -73,6 +75,58 @@ class MovieRecommendationAgent:
         if response.status_code == 200:
             return response.json().get("results", [])
         return {"error": "Failed to fetch movies"}
+
+    def extract_json_from_response(self, response):
+        """
+        Extract the JSON object from the LLM's response text.
+        """
+        try:
+            start_index = response.index("{")
+            end_index = response.rindex("}") + 1
+            json_str = response[start_index:end_index]
+            return json.loads(json_str)
+        except (ValueError, json.JSONDecodeError) as e:
+            raise ValueError(f"Failed to extract JSON from response: {str(e)}")
+
+    def parse_query_to_fields(self):
+        """
+        Parse the user's natural language query into structured fields using the LLM.
+        """
+        prompt = f"""
+        User Query: "{self.query}"
+        Extract:
+        - Genre (if mentioned)
+        - Actor (if mentioned)
+        - Release Year (if mentioned)
+
+        Provide the output as a JSON object ONLY. Example:
+        {{
+            "genre_name": "Action",
+            "actor_name": "Keanu Reeves",
+            "release_year": "2021"
+        }}
+        """
+        try:
+            chat_completion = client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "You are an expert query parser."},
+                    {"role": "user", "content": prompt},
+                ],
+                model="llama3-8b-8192",
+            )
+            llm_response = chat_completion.choices[0].message.content.strip()
+            print(f"Raw LLM response: {llm_response}")  # Debugging: Check raw response
+
+            # Extract and parse JSON from response
+            self.user_input = self.extract_json_from_response(llm_response)
+            print(f"Parsed fields: {self.user_input}")  # Debugging: Check parsed fields
+
+            # Ensure the dictionary has all necessary keys
+            self.user_input.setdefault("genre_name", None)
+            self.user_input.setdefault("actor_name", None)
+            self.user_input.setdefault("release_year", None)
+        except Exception as e:
+            raise ValueError(f"Failed to process query: {str(e)}")
 
     def generate_ai_recommendations(self, movie_list):
         """
@@ -164,6 +218,9 @@ class MovieRecommendationAgent:
         """
         Execute the AI agent workflow with dynamic looping.
         """
+        if self.query:
+            self.parse_query_to_fields()
+
         movie_data = []
         recommendations = {}
 

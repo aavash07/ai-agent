@@ -29,15 +29,22 @@ def recommend():
     API endpoint for generating movie recommendations.
     """
     data = request.json
-    if not data:
-        return jsonify({"error": "Invalid input. Please provide genre_id, actor_name, and release_year."}), 400
+    user_query = data.get("query", None)  # Check if user provides a natural language query
 
     try:
-        agent = MovieRecommendationAgent(data)
+        # Create the agent
+        if user_query:
+            # Process a natural language query
+            agent = MovieRecommendationAgent(query=user_query)
+        else:
+            # Process structured input
+            agent = MovieRecommendationAgent(user_input=data)
+
+        # Run the agent and get recommendations
         result = agent.run()
         return jsonify(result), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Failed to process query: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
