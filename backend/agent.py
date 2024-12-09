@@ -91,6 +91,7 @@ class MovieRecommendationAgent:
     def parse_query_to_fields(self):
         """
         Parse the user's natural language query into structured fields using the LLM.
+        Implements a feedback loop to validate and refine parsed fields from the query.
         """
         prompt = f"""
         User Query: "{self.query}"
@@ -106,38 +107,76 @@ class MovieRecommendationAgent:
             "release_year": "2021"
         }}
         """
+        feedback_prompt_template = """
+        The extracted fields from the user query are:
+        {parsed_fields}
+
+        Based on the user's query: "{user_query}",
+        Are these fields accurate and aligned with the user's intent? If not, suggest corrections.
+        Provide the response as JSON ONLY with two keys:
+        - "is_valid" (true/false)
+        - "suggestions" (if invalid, provide the corrected fields)
+        """
         try:
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "You are an expert query parser."},
-                    {"role": "user", "content": prompt},
-                ],
-                model="llama3-8b-8192",
-            )
-            llm_response = chat_completion.choices[0].message.content.strip()
-            print(f"Raw LLM response: {llm_response}")  # Debugging: Check raw response
+            for attempt in range(3):  # Retry up to 3 times for improved parsing
+                chat_completion = client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "You are an expert query parser."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    model="llama3-8b-8192",
+                )
+                llm_response = chat_completion.choices[0].message.content.strip()
+                print(f"Raw LLM response: {llm_response}")  # Debugging: Check raw response
 
-            # Extract and parse JSON from response
-            self.user_input = self.extract_json_from_response(llm_response)
-            print(f"Parsed fields: {self.user_input}")  # Debugging: Check parsed fields
+                # Extract and parse JSON from response
+                parsed_fields = self.extract_json_from_response(llm_response)
+                print(f"Parsed fields: {parsed_fields}")  # Debugging: Check parsed fields
 
-            # Ensure the dictionary has all necessary keys
-            self.user_input.setdefault("genre_name", None)
-            self.user_input.setdefault("actor_name", None)
-            self.user_input.setdefault("release_year", None)
+                # Validate parsed fields using feedback
+                feedback_prompt = feedback_prompt_template.format(
+                    parsed_fields=json.dumps(parsed_fields, indent=2),
+                    user_query=self.query,
+                )
+                feedback_response = client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "You are a feedback validator for parsed query fields."},
+                        {"role": "user", "content": feedback_prompt},
+                    ],
+                    model="llama3-8b-8192",
+                )
+                feedback = json.loads(feedback_response.choices[0].message.content.strip())
+
+                if feedback.get("is_valid", False):
+                    self.user_input = parsed_fields
+                    # Ensure the dictionary has all necessary keys
+                    self.user_input.setdefault("genre_name", None)
+                    self.user_input.setdefault("actor_name", None)
+                    self.user_input.setdefault("release_year", None)
+                    print("Query parsed and validated successfully.")  # Debugging
+                    return  # Exit successfully if validation passes
+                else:
+                    print(f"Feedback suggested corrections: {feedback.get('suggestions')}")  # Debugging
+                    parsed_fields = feedback.get("suggestions")  # Use suggested corrections for the next attempt
+
         except Exception as e:
             raise ValueError(f"Failed to process query: {str(e)}")
+
+        # If all attempts fail, raise an error
+        raise ValueError("Failed to parse query after multiple attempts.")
+
 
     def generate_ai_recommendations(self, movie_list):
         """
         Generate multiple recommendations using the Groq AI API and refetch movie details.
+        Implements a feedback loop to refine recommendations.
         """
         movie_titles = [movie["title"] for movie in movie_list]
         genre_name = self.user_input.get("genre_name", "not specified")
         actor_name = self.user_input.get("actor_name", "not specified")
         release_year = self.user_input.get("release_year", "not specified")
 
-        prompt = f"""
+        base_prompt = f"""
         Based on the user's input:
         - Genre: {genre_name}
         - Actor: {actor_name}
@@ -150,28 +189,70 @@ class MovieRecommendationAgent:
 
         Make the descriptions engaging and conversational, avoiding overly technical language. Format the output as a numbered list.
         """
+        feedback_prompt_template = """
+        The recommendations generated are:
+        {recommendation_text}
+
+        Based on the user's input: Genre: {genre}, Actor: {actor}, Year: {year},
+        Are these recommendations accurate and aligned with the input? If not, suggest corrections.
+        Provide the response as JSON ONLY with two keys:
+        - "is_valid" (true/false)
+        - "suggestions" (if invalid, provide corrected recommendations)
+        """
+
         try:
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "You are a helpful movie recommendation assistant."},
-                    {"role": "user", "content": prompt},
-                ],
-                model="llama3-8b-8192",
-            )
-            recommendation_text = chat_completion.choices[0].message.content.strip()
+            for attempt in range(3):  # Retry up to 3 times for better recommendations
+                chat_completion = client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "You are a helpful movie recommendation assistant."},
+                        {"role": "user", "content": base_prompt},
+                    ],
+                    model="llama3-8b-8192",
+                )
+                recommendation_text = chat_completion.choices[0].message.content.strip()
 
-            # Extract movie titles from the AI response
-            recommended_titles = self.extract_titles_from_text(recommendation_text)
+                # Extract movie titles from the AI response
+                recommended_titles = self.extract_titles_from_text(recommendation_text)
 
-            # Refetch movies for the recommended titles
-            detailed_movies = self.refetch_movies_by_titles(recommended_titles)
+                # Refetch movies for the recommended titles
+                detailed_movies = self.refetch_movies_by_titles(recommended_titles)
 
-            return {
-                "recommendation_text": recommendation_text,
-                "recommended_movies": detailed_movies,
-            }
+                # Validate recommendations using feedback
+                feedback_prompt = feedback_prompt_template.format(
+                    recommendation_text=recommendation_text,
+                    genre=genre_name,
+                    actor=actor_name,
+                    year=release_year,
+                )
+                feedback_response = client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": "You are a feedback validator for recommendations."},
+                        {"role": "user", "content": feedback_prompt},
+                    ],
+                    model="llama3-8b-8192",
+                )
+                feedback = json.loads(feedback_response.choices[0].message.content.strip())
+
+                if feedback.get("is_valid", False):
+                    return {
+                        "recommendation_text": recommendation_text,
+                        "recommended_movies": detailed_movies,
+                    }
+                else:
+                    print(f"Feedback suggested corrections: {feedback.get('suggestions')}")  # Debugging
+                    base_prompt = f"""
+                    User feedback indicated issues with the recommendations.
+                    Based on the feedback: {feedback.get('suggestions')}, refine the recommendations.
+                    """  # Update the base prompt with corrections from feedback
+
         except Exception as e:
-            return {"error": f"Failed to generate recommendations: {str(e)}"}
+            print(f"Error in generating recommendations: {str(e)}")
+            return {"error": f"Failed to generate valid recommendations after multiple attempts."}
+
+        # If all attempts fail, raise an error
+        return {"error": "Failed to generate valid recommendations after multiple attempts."}
+
+
 
     def refetch_movies_by_titles(self, titles):
         """
@@ -199,7 +280,7 @@ class MovieRecommendationAgent:
         """
         Extract movie titles from the AI-generated recommendation text.
         """
-        titles = re.findall(r"\*\*(.*?)\*\*", text)
+        titles = re.findall(r'\*\*(.*?)\*\*', text)
         return titles
 
     def execute_action(self, action):
