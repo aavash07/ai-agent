@@ -117,8 +117,12 @@ class MovieRecommendationAgent:
         - "is_valid" (true/false)
         - "suggestions" (if invalid, provide the corrected fields)
         """
+        MAX_ATTEMPTS = 3  # Limit retries to avoid infinite loop
+        last_valid_fields = None  # Track last valid parsed fields for fallback
+
         try:
-            for attempt in range(3):  # Retry up to 3 times for improved parsing
+            for attempt in range(MAX_ATTEMPTS):
+                # Generate parsed fields from AI
                 chat_completion = client.chat.completions.create(
                     messages=[
                         {"role": "system", "content": "You are an expert query parser."},
@@ -157,12 +161,18 @@ class MovieRecommendationAgent:
                     return  # Exit successfully if validation passes
                 else:
                     print(f"Feedback suggested corrections: {feedback.get('suggestions')}")  # Debugging
+                    last_valid_fields = parsed_fields  # Store current fields as fallback
                     parsed_fields = feedback.get("suggestions")  # Use suggested corrections for the next attempt
 
         except Exception as e:
+            print(f"Error in parsing query: {str(e)}")  # Debugging
             raise ValueError(f"Failed to process query: {str(e)}")
 
-        # If all attempts fail, raise an error
+        # If retries exhausted, fallback to last valid fields or raise an error
+        if last_valid_fields:
+            print("Returning last valid parsed fields after failed refinements.")
+            self.user_input = last_valid_fields
+            return
         raise ValueError("Failed to parse query after multiple attempts.")
 
 
@@ -200,8 +210,12 @@ class MovieRecommendationAgent:
         - "suggestions" (if invalid, provide corrected recommendations)
         """
 
-        try:
-            for attempt in range(3):  # Retry up to 3 times for better recommendations
+        MAX_ATTEMPTS = 3  # Limit retries to avoid infinite loop
+        last_valid_recommendations = None  # Track last valid recommendations for fallback
+
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                # Generate recommendations from AI
                 chat_completion = client.chat.completions.create(
                     messages=[
                         {"role": "system", "content": "You are a helpful movie recommendation assistant."},
@@ -234,6 +248,7 @@ class MovieRecommendationAgent:
                 feedback = json.loads(feedback_response.choices[0].message.content.strip())
 
                 if feedback.get("is_valid", False):
+                    # Valid recommendations confirmed
                     return {
                         "recommendation_text": recommendation_text,
                         "recommended_movies": detailed_movies,
@@ -245,11 +260,20 @@ class MovieRecommendationAgent:
                     Based on the feedback: {feedback.get('suggestions')}, refine the recommendations.
                     """  # Update the base prompt with corrections from feedback
 
-        except Exception as e:
-            print(f"Error in generating recommendations: {str(e)}")
-            return {"error": f"Failed to generate valid recommendations after multiple attempts."}
+                    # Store the last valid recommendations for fallback
+                    last_valid_recommendations = {
+                        "recommendation_text": recommendation_text,
+                        "recommended_movies": detailed_movies,
+                    }
 
-        # If all attempts fail, raise an error
+            except Exception as e:
+                print(f"Error in generating recommendations: {str(e)}")
+                return {"error": f"Failed to generate valid recommendations after multiple attempts."}
+
+        # If retries exhausted, return the last valid recommendations or an error
+        if last_valid_recommendations:
+            print("Returning last valid recommendations after failed refinements.")
+            return last_valid_recommendations
         return {"error": "Failed to generate valid recommendations after multiple attempts."}
 
 
