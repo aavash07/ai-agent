@@ -14,7 +14,7 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Configure Groq client
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 class MovieRecommendationAgent:
@@ -23,6 +23,8 @@ class MovieRecommendationAgent:
         self.query = query
         self.progress_log = []
         self.done = False
+        # Initialize the Groq client here
+        self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
     def plan_actions(self):
         """
@@ -123,7 +125,7 @@ class MovieRecommendationAgent:
         try:
             for attempt in range(MAX_ATTEMPTS):
                 # Generate parsed fields from AI
-                chat_completion = client.chat.completions.create(
+                chat_completion = self.client.chat.completions.create(
                     messages=[
                         {"role": "system", "content": "You are an expert query parser."},
                         {"role": "user", "content": prompt},
@@ -142,7 +144,7 @@ class MovieRecommendationAgent:
                     parsed_fields=json.dumps(parsed_fields, indent=2),
                     user_query=self.query,
                 )
-                feedback_response = client.chat.completions.create(
+                feedback_response = self.client.chat.completions.create(
                     messages=[
                         {"role": "system", "content": "You are a feedback validator for parsed query fields."},
                         {"role": "user", "content": feedback_prompt},
@@ -216,7 +218,7 @@ class MovieRecommendationAgent:
         for attempt in range(MAX_ATTEMPTS):
             try:
                 # Generate recommendations from AI
-                chat_completion = client.chat.completions.create(
+                chat_completion = self.client.chat.completions.create(
                     messages=[
                         {"role": "system", "content": "You are a helpful movie recommendation assistant."},
                         {"role": "user", "content": base_prompt},
@@ -238,7 +240,7 @@ class MovieRecommendationAgent:
                     actor=actor_name,
                     year=release_year,
                 )
-                feedback_response = client.chat.completions.create(
+                feedback_response = self.client.chat.completions.create(
                     messages=[
                         {"role": "system", "content": "You are a feedback validator for recommendations."},
                         {"role": "user", "content": feedback_prompt},
