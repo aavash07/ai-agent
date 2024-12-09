@@ -1,4 +1,4 @@
-# AI-Powered Movie Recommendation Agent
+# AI-Powered Movie Recommendation Agent ( Aavash Chaudhary, Pushpa Pandey, John Moses B) Team Members
 
 ### Overview
 The AI-Powered Movie Recommendation Agent is a system that provides personalized movie recommendations based on user preferences. It leverages TMDB API for movie data and Groq's large language model (LLM) for understanding natural language queries and generating relevant recommendations.
