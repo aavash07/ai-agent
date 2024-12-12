@@ -36,10 +36,6 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory of the backend and add the following keys:
  # .env
 TMDB_API_KEY=6c95379be6aeeb27a69402700d7e1798
-AZURE_OPENAI_API_KEY=46z847AGFiOqdlWxzaYuQ0Ad9XbCwm9o6qqKXPZPvpAdoIa9tlaKJQQJ99ALACHYHv6XJ3w3AAAAACOGjxTF
-AZURE_OPENAI_ENDPOINT=https://chaud-m4bwiifx-eastus2.openai.azure.com/
-AZURE_OPENAI_MODEL=gpt-4
-AZURE_OPENAI_API_VERSION=2024-08-01-preview
 GROQ_API_KEY=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
 GROQ_API_URL=https://api.groq.com/openai/v1/chat/completions
 
